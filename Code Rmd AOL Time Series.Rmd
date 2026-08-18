@@ -1,0 +1,1211 @@
+---
+title: "AOL Time Series"
+author: "Joycelin_2702213713"
+date: "2026-06-01"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Library
+```{r}
+#install.packages("Metrics")
+#install.packages("keras")
+library(readxl)
+library(tseries)
+library(forecast)
+library(car)
+library(lmtest)
+library(nortest)
+library(Metrics)
+library(ggplot2)
+library(keras)
+library(TTR)
+library(pracma)
+```
+
+## Import Data
+```{r}
+data <- read.csv("CNY_IDR_New.csv")
+head(data)
+```
+
+## Preprocessing
+```{r}
+convert_num <- function(x){
+  x <- gsub("\\.","",x)
+  x <- gsub(",",".",x)
+  as.numeric(x)
+}
+
+data$Terakhir <- convert_num(data$Terakhir)
+ts_cny <- ts(data$Terakhir)
+ts_cny
+```
+```{r}
+summary(ts_cny)
+```
+
+## Time Series Plot
+```{r}
+plot(ts_cny, main="CNY/IDR Exchange Rate", ylab="Exchange Rate", xlab="Time")
+```
+## Uji Stasioneritas
+### Stasioner Terhadap Varians
+```{r}
+BoxCox.lambda(ts_cny)
+```
+```{r}
+library(car)
+n <- length(ts_cny)
+group <- rep(1:4, length.out=n)
+leveneTest(as.numeric(ts_cny), factor(group))
+```
+```{r}
+summary(powerTransform(ts_cny))
+```
+## Transformasi
+```{r}
+trans <- 1/(ts_cny^3)
+```
+
+### Stasioner Terhadap Mean
+```{r}
+adf.test(ts_cny)
+```
+### Differencing
+```{r}
+d1 <- diff(ts_cny)
+plot(d1)
+```
+```{r}
+adf.test(d1)
+```
+## Plot ACF dan PACF
+### ACF
+```{r}
+acf(d1, lag.max=100)
+```
+### PACF
+```{r}
+pacf(d1, lag.max=100)
+```
+## Train-Test Split
+```{r}
+n <- length(ts_cny)
+
+train_size <- floor(0.8*n)
+
+train <- ts_cny[1:train_size]
+test <- ts_cny[(train_size+1):n]
+length(train)
+length(test)
+```
+
+## Model ARIMA
+```{r}
+m1 <- arima(train, order=c(0,1,0))
+m2 <- arima(train, order=c(0,1,1))
+m3 <- arima(train, order=c(1,1,0))
+m4 <- arima(train, order=c(1,1,2))
+m5 <- arima(train, order=c(2,1,0))
+```
+
+
+## Uji Signifikansi Parameter
+```{r}
+#coeftest(m1)
+```
+```{r}
+fc_m1 <- forecast(
+  m1,
+  h = length(test)
+)
+
+data.frame(
+  RMSE = rmse(test, fc_m1$mean),
+  MAE = mae(test, fc_m1$mean),
+  MAPE = mape(test, fc_m1$mean)*100
+)
+```
+
+```{r}
+coeftest(m2)
+```
+```{r}
+coeftest(m3)
+```
+```{r}
+coeftest(m4)
+```
+```{r}
+coeftest(m5)
+```
+
+## Uji Asumsi
+### Normalitas
+```{r}
+lillie.test(residuals(m1))
+```
+```{r}
+lillie.test(residuals(m2))
+```
+```{r}
+lillie.test(residuals(m3))
+```
+```{r}
+lillie.test(residuals(m4))
+```
+```{r}
+lillie.test(residuals(m5))
+```
+### Uji White Noise
+```{r}
+Box.test(residuals(m1))
+```
+```{r}
+Box.test(residuals(m2))
+```
+```{r}
+Box.test(residuals(m3))
+```
+```{r}
+Box.test(residuals(m4))
+```
+```{r}
+Box.test(residuals(m5))
+```
+## Forecast Model ARIMA
+```{r}
+fc_m1 <- forecast(m1, h=length(test))
+fc_m2 <- forecast(m2, h=length(test))
+fc_m3 <- forecast(m3, h=length(test))
+fc_m4 <- forecast(m4, h=length(test))
+fc_m5 <- forecast(m5, h=length(test))
+```
+
+## Evaluasi Model ARIMA
+```{r}
+hasil_arima <- data.frame(
+  Model = c(
+    "ARIMA(0,1,0)",
+    "ARIMA(0,1,1)",
+    "ARIMA(1,1,0)",
+    "ARIMA(1,1,2)",
+    "ARIMA(2,1,0)"),
+    
+  RMSE = c(
+    rmse(test, fc_m1$mean),
+    rmse(test, fc_m2$mean),
+    rmse(test, fc_m3$mean),
+    rmse(test, fc_m4$mean),
+    rmse(test, fc_m5$mean)
+  ),
+  MAE = c(
+    mae(test, fc_m1$mean),
+    mae(test, fc_m2$mean),
+    mae(test, fc_m3$mean),
+    mae(test, fc_m4$mean),
+    mae(test, fc_m5$mean)
+  ),
+  MAPE = c(
+    mape(test, fc_m1$mean)*100,
+    mape(test, fc_m2$mean)*100,
+    mape(test, fc_m3$mean)*100,
+    mape(test, fc_m4$mean)*100,
+    mape(test, fc_m5$mean)*100
+  )
+)
+
+hasil_arima
+```
+
+## Plot Perbandingan Model ARIMA
+```{r}
+
+mape010 <- mape(test, fc_m1$mean)*100
+mape011 <- mape(test, fc_m2$mean)*100
+mape110 <- mape(test, fc_m3$mean)*100
+mape112 <- mape(test, fc_m4$mean)*100
+mape210 <- mape(test, fc_m5$mean)*100
+
+arima_results <- data.frame(
+  Model = c(
+    "ARIMA(0,1,0)",
+    "ARIMA(0,1,1)",
+    "ARIMA(1,1,0)",
+    "ARIMA(1,1,2)",
+    "ARIMA(2,1,0)"
+  ),
+  MAPE = c(
+    4.336,
+    mape011,
+    mape110,
+    mape112,
+    mape210
+  )
+)
+
+library(ggplot2)
+
+ggplot(
+  arima_results,
+  aes(
+    x = reorder(Model, MAPE),
+    y = MAPE
+  )
+) +
+  geom_col() +
+  coord_flip() +
+  coord_cartesian(xlim = NULL,
+                  ylim = c(4.33,4.345)) +
+  xlab("ARIMA Model") +
+  ylab("MAPE (%)") +
+  theme_bw()
+```
+
+## Model DMA
+```{r}
+dma_brown <- function(train, n){
+  M1 <- SMA(train, n = n)
+  M2 <- SMA(M1, n = n)
+  at <- 2*M1 - M2
+  bt <- (2/(n-1))*(M1-M2)
+  list(
+    M1 = M1,
+    M2 = M2,
+    at = at,
+    bt = bt
+  )
+}
+```
+
+```{r}
+dma5 <- dma_brown(train, 5)
+dma10 <- dma_brown(train, 10)
+dma20 <- dma_brown(train, 20)
+dma21 <- dma_brown(train, 21)
+dma22 <- dma_brown(train, 22)
+dma23 <- dma_brown(train, 23)
+dma24 <- dma_brown(train, 24)
+dma25 <- dma_brown(train, 25)
+dma26 <- dma_brown(train, 26)
+dma30 <- dma_brown(train, 30)
+summary(dma5)
+summary(dma10)
+summary(dma20)
+summary(dma21)
+summary(dma22)
+summary(dma23)
+summary(dma24)
+summary(dma25)
+summary(dma26)
+summary(dma30)
+```
+```{r}
+dma24 <- dma_brown(train, n = 24)
+
+at_last <- tail(
+  na.omit(dma24$at),
+  1
+)
+
+bt_last <- tail(
+  na.omit(dma24$bt),
+  1
+)
+
+h <- 1:length(test)
+
+pred_dma <- at_last + bt_last*h
+
+head(pred_dma)
+tail(pred_dma)
+
+pred_dma
+```
+```{r}
+plot(
+  test,
+  type = "l",
+  lwd = 2,
+  xlab = "Time",
+  ylab = "CNY/IDR",
+  main = "Actual vs DMA(24) Forecast"
+)
+
+lines(
+  pred_dma,
+  lwd = 2,
+  lty = 2
+)
+
+legend(
+  "topleft",
+  legend = c("Actual", "DMA(24)"),
+  lty = c(1,2),
+  lwd = 2
+)
+```
+
+## Evaluasi Model DMA
+```{r}
+evaluate_dma <- function(model, test){
+
+  at_last <- tail(
+    na.omit(model$at),
+    1
+  )
+
+  bt_last <- tail(
+    na.omit(model$bt),
+    1
+  )
+
+  h <- 1:length(test)
+
+  pred <- at_last +
+          bt_last*h
+
+  data.frame(
+    RMSE = rmse(test,pred),
+    MAE = mae(test,pred),
+    MAPE = mape(test,pred)*100
+  )
+  
+}
+
+```
+
+
+```{r}
+hasil_dma <- rbind(
+
+  cbind(
+    Model = "DMA(5)",
+    evaluate_dma(
+      dma5,
+      test
+    )
+  ),
+
+  cbind(
+    Model = "DMA(10)",
+    evaluate_dma(
+      dma10,
+      test
+    )
+  ),
+
+  cbind(
+    Model = "DMA(20)",
+    evaluate_dma(
+      dma20,
+      test
+    )
+  ),
+  cbind(
+    Model = "DMA(21)",
+    evaluate_dma(
+      dma21,
+      test
+    )
+  ),cbind(
+    Model = "DMA(22)",
+    evaluate_dma(
+      dma22,
+      test
+    )
+  ),
+  cbind(
+    Model = "DMA(23)",
+    evaluate_dma(
+      dma23,
+      test
+    )
+  ),
+  cbind(
+    Model = "DMA(24)",
+    evaluate_dma(
+      dma24,
+      test
+    )
+  ),
+  cbind(
+    Model = "DMA(25)",
+    evaluate_dma(
+      dma25,
+      test
+    )
+  ),
+  cbind(
+    Model = "DMA(26)",
+    evaluate_dma(
+      dma26,
+      test
+    )
+  ),
+  cbind(
+    Model = "DMA(30)",
+    evaluate_dma(
+      dma30,
+      test
+    )
+  )  
+  
+
+)
+
+hasil_dma
+```
+
+## Plot Perbandingan Model DMA
+```{r}
+dma_results <- data.frame(
+  Window = c(5,10,20,23,24,25,26,30),
+  RMSE = c(111.808,115.905,71.917,64.382,64.025,65.037,65.684,72.257),
+  MAE = c(93.790,97.580,57.361,50.259,49.929,50.891,51.483,57.679),
+  MAPE = c(3.744,3.896,2.284,1.999,1.986,2.024,2.048,2.297)
+)
+
+library(ggplot2)
+
+ggplot(
+  dma_results,
+  aes(x = Window, y = MAPE)
+) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 3) +
+  labs(
+    x = "DMA Window Size",
+    y = "MAPE (%)"
+  ) +
+  theme_bw()
+```
+
+```{r}
+library(ggplot2)
+
+ggplot(
+  dma_results,
+  aes(x = Window, y = MAPE)
+) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 3) +
+  geom_point(
+    data = subset(dma_results, Window == 24),
+    size = 4,
+    shape = 17
+  ) +
+  geom_text(
+    data = subset(dma_results, Window == 24),
+    aes(label = "DMA(24)"),
+    vjust = -1
+  ) +
+  labs(
+    x = "DMA Window Size",
+    y = "MAPE (%)"
+  ) +
+  theme_bw()
+```
+
+## Model Random Forest
+```{r}
+#install.packages("randomForest")
+library(randomForest)
+```
+### Lag
+```{r}
+df_rf <- data.frame(
+  y = as.numeric(ts_cny)
+)
+
+df_rf$lag1 <- c(NA, head(df_rf$y,-1))
+df_rf$lag2 <- c(NA, NA, head(df_rf$y,-2))
+df_rf$lag3 <- c(NA, NA, NA, head(df_rf$y,-3))
+df_rf$lag4 <- c(NA, NA, NA, NA, head(df_rf$y,-4))
+df_rf$lag5 <- c(NA, NA, NA, NA, NA, head(df_rf$y,-5))
+
+df_rf <- na.omit(df_rf)
+```
+
+### Train-Test Split
+```{r}
+n <- nrow(df_rf)
+
+train_size <- floor(0.8*n)
+
+train_rf <- df_rf[1:train_size,]
+test_rf <- df_rf[(train_size+1):n,]
+```
+
+### Model
+```{r}
+set.seed(123)
+
+rf_model <- randomForest(
+  y ~ lag1 + lag2 + lag3 + lag4 + lag5,
+  data = train_rf,
+  ntree = 36,
+  mtry = 1,
+  importance = TRUE
+)
+
+rf_model
+```
+```{r}
+importance(rf_model)
+
+varImpPlot(rf_model)
+```
+
+## Model RF Lengkap
+```{r}
+
+results_rf <- data.frame()
+
+for(nt in c(25, 30, 35, 36, 37, 40, 50)){
+  for(mt in c(1,2)){
+    
+    set.seed(123)
+
+    rf_model <- randomForest(
+      y ~ lag1 + lag2 + lag3 + lag4 + lag5,
+      data = train_rf,
+      ntree = nt,
+      mtry = mt,
+      importance = TRUE
+    )
+
+    pred <- predict(rf_model, newdata = test_rf)
+
+    rmse_val <- rmse(test_rf$y, pred)
+    mae_val  <- mae(test_rf$y, pred)
+    mape_val <- mean(abs((test_rf$y - pred)/test_rf$y))*100
+
+    results_rf <- rbind(
+      results_rf,
+      data.frame(
+        ntree = nt,
+        mtry = mt,
+        RMSE = rmse_val,
+        MAE = mae_val,
+        MAPE = mape_val
+      )
+    )
+  }
+}
+
+results_rf[order(results_rf$MAPE),]
+```
+
+## Plot Perbandingan Model RF
+```{r}
+library(ggplot2)
+
+ggplot(results_rf,
+       aes(x = ntree,
+           y = MAPE,
+           color = factor(mtry))) +
+  geom_line() +
+  geom_point(size = 2) +
+  labs(
+    x = "Number of Trees (ntree)",
+    y = "MAPE (%)",
+    color = "mtry"
+  )
+```
+
+
+### Prediksi
+```{r}
+pred_rf <- predict(
+  rf_model,
+  newdata = test_rf
+)
+```
+
+### Evaluasi
+```{r}
+hasil_rf <- data.frame(
+  Model = "Random Forest",
+  RMSE = rmse(
+    test_rf$y,
+    pred_rf
+  ),
+  MAE = mae(
+    test_rf$y,
+    pred_rf
+  ),
+  MAPE = mape(
+    test_rf$y,
+    pred_rf
+  )*100
+)
+
+hasil_rf
+```
+
+```{r}
+set.seed(123)
+
+rf_best <- randomForest(
+  y ~ lag1 + lag2 + lag3 + lag4 + lag5,
+  data = train_rf,
+  ntree = 36,
+  mtry = 1,
+  importance = TRUE
+)
+
+pred_rf <- predict(
+  rf_best,
+  newdata = test_rf
+)
+```
+
+## Model NNAR
+```{r}
+library(forecast)
+nnar_model <- nnetar(train)
+nnar_model
+```
+## Forecast Model NNAR
+```{r}
+fc_nnar <- forecast(
+  nnar_model,
+  h = length(test)
+)
+
+pred_nnar <- fc_nnar$mean
+```
+
+## Model NNAR lengkap
+```{r}
+library(forecast)
+library(Metrics)
+
+results_nnar <- data.frame()
+
+for(p_val in c(4,5,6)){
+  for(size_val in c(7,8,9,10)){
+
+    set.seed(123)
+
+    nn_model <- nnetar(
+      train,
+      p = p_val,
+      size = size_val,
+      repeats = 20
+    )
+
+    pred <- forecast(nn_model, h = length(test))$mean
+
+    rmse_val <- rmse(test, pred)
+    mae_val  <- mae(test, pred)
+    mape_val <- mean(abs((test - pred)/test))*100
+
+    results_nnar <- rbind(
+      results_nnar,
+      data.frame(
+        p = p_val,
+        size = size_val,
+        RMSE = rmse_val,
+        MAE = mae_val,
+        MAPE = mape_val
+      )
+    )
+  }
+}
+
+results_nnar[order(results_nnar$MAPE),]
+```
+```{r}
+set.seed(123)
+
+nnar_best <- nnetar(
+  train,
+  p = 5,
+  size = 9,
+  repeats = 20
+)
+
+pred_nnar <- forecast(
+  nnar_best,
+  h = length(test)
+)$mean
+```
+
+## Plot Perbandingan Model NNAR
+```{r}
+library(ggplot2)
+
+results_nnar$Model <- paste0(
+  "NNAR(",
+  results_nnar$p,
+  ",",
+  results_nnar$size,
+  ")"
+)
+
+ggplot(
+  results_nnar,
+  aes(
+    x = reorder(Model, MAPE),
+    y = MAPE
+  )
+) +
+  geom_col(width = 0.7) +
+  coord_flip() +
+  xlab("NNAR Configuration") +
+  ylab("MAPE (%)") +
+  theme_bw()
+```
+
+## Evaluasi Model NNAR
+```{r}
+data.frame(
+ RMSE = rmse(test, fc_nnar$mean),
+ MAE  = mae(test, fc_nnar$mean),
+ MAPE = mape(test, fc_nnar$mean)*100
+)
+```
+
+## Forecast DMA
+```{r}
+library(TTR)
+
+# DMA terbaik
+n <- 24
+
+# Moving Average pertama
+M1 <- SMA(ts_cny, n)
+
+# Moving Average kedua
+M2 <- SMA(M1, n)
+
+# Nilai terakhir
+M1_t <- tail(na.omit(M1), 1)
+M2_t <- tail(na.omit(M2), 1)
+
+# Level dan Trend Brown DMA
+a_t <- 2*M1_t - M2_t
+b_t <- (2/(n-1))*(M1_t - M2_t)
+
+# Forecast 30 periode ke depan
+h <- 30
+
+forecast_dma <- numeric(h)
+
+for(i in 1:h){
+  forecast_dma[i] <- a_t + b_t*i
+}
+
+forecast_dma
+```
+
+```{r}
+library(dplyr)
+library(lubridate)
+
+data$Tanggal <- as.Date(data$Tanggal, format="%m/%d/%Y")
+
+hari_kerja_bulanan <- data %>%
+  mutate(bulan = format(Tanggal, "%Y-%m")) %>%
+  count(bulan)
+
+mean(hari_kerja_bulanan$n)
+```
+
+## Model SARIMA
+```{r}
+length(train)
+```
+
+## Plot Decompose
+```{r}
+  plot(decompose(ts(train, frequency = 20), type = "multiplicative"))
+```
+
+```{r}
+acf(d1, lag.max = 100)
+pacf(d1, lag.max = 100)
+```
+
+```{r}
+library(lmtest)
+
+sarima1 <- arima(
+  train,
+  order = c(0,1,0),
+  seasonal = list(order = c(1,0,0), period = 24)
+)
+
+sarima2 <- arima(
+  train,
+  order = c(0,1,1),
+  seasonal = list(order = c(1,0,0), period = 24)
+)
+
+sarima3 <- arima(
+  train,
+  order = c(1,1,0),
+  seasonal = list(order = c(1,0,0), period = 24)
+)
+
+sarima4 <- arima(
+  train,
+  order = c(0,1,0),
+  seasonal = list(order = c(0,0,1), period = 24)
+)
+```
+
+## Uji Signifikansi Parameter
+```{r}
+coeftest(sarima1)
+coeftest(sarima2)
+coeftest(sarima3)
+coeftest(sarima4)
+```
+```{r}
+library(nortest)
+
+lillie.test(residuals(sarima1))
+lillie.test(residuals(sarima2))
+lillie.test(residuals(sarima3))
+lillie.test(residuals(sarima4))
+```
+```{r}
+Box.test(
+  residuals(sarima1),
+  type = "Box-Pierce"
+)
+
+Box.test(
+  residuals(sarima2),
+  type = "Box-Pierce"
+)
+
+Box.test(
+  residuals(sarima3),
+  type = "Box-Pierce"
+)
+
+Box.test(
+  residuals(sarima4),
+  type = "Box-Pierce"
+)
+```
+
+```{r}
+evaluate_model <- function(actual, predicted){
+
+  rmse <- sqrt(mean((actual - predicted)^2))
+
+  mae <- mean(abs(actual - predicted))
+
+  mape <- mean(abs((actual - predicted)/actual))*100
+
+  data.frame(
+    RMSE = rmse,
+    MAE = mae,
+    MAPE = mape
+  )
+}
+```
+
+```{r}
+fc1 <- predict(
+  sarima1,
+  n.ahead = length(test)
+)
+
+fc2 <- predict(
+  sarima2,
+  n.ahead = length(test)
+)
+
+fc3 <- predict(
+  sarima3,
+  n.ahead = length(test)
+)
+
+fc4 <- predict(
+  sarima4,
+  n.ahead = length(test)
+)
+```
+
+```{r}
+eval1 <- evaluate_model(
+  test,
+  fc1$pred
+)
+
+eval2 <- evaluate_model(
+  test,
+  fc2$pred
+)
+
+eval3 <- evaluate_model(
+  test,
+  fc3$pred
+)
+
+eval4 <- evaluate_model(
+  test,
+  fc4$pred
+)
+```
+
+```{r}
+comparison_sarima <- rbind(
+  cbind(
+    Model = "SARIMA(0,1,0)(1,0,0)[20]",
+    eval1
+  ),
+
+  cbind(
+    Model = "SARIMA(0,1,1)(1,0,0)[20]",
+    eval2
+  ),
+
+  cbind(
+    Model = "SARIMA(1,1,0)(1,0,0)[20]",
+    eval3
+  ),
+
+  cbind(
+    Model = "SARIMA(0,1,0)(0,0,1)[20]",
+    eval4
+  )
+)
+
+comparison_sarima
+```
+```{r}
+sarima_perf <- data.frame(
+  Model = c(
+    "SARIMA(0,1,0)(1,0,0)[20]",
+    "SARIMA(0,1,1)(1,0,0)[20]",
+    "SARIMA(1,1,0)(1,0,0)[20]",
+    "SARIMA(0,1,0)(0,0,1)[20]"
+  ),
+  MAPE = c(
+    4.351062,
+    4.351170,
+    4.351038,
+    4.349636
+  )
+)
+
+ggplot(
+  sarima_perf,
+  aes(
+    x = reorder(Model, MAPE),
+    y = MAPE
+  )
+) +
+  geom_col() +
+  coord_flip() +
+  coord_cartesian(xlim = NULL, ylim = c(4.349, 4.352)) +
+  labs(
+    title = "Forecasting Performance of SARIMA Models",
+    x = "SARIMA Model",
+    y = "MAPE (%)"
+  ) +
+  theme_minimal()
+```
+```{r}
+length(test)
+
+length(fc_m1$mean)
+
+length(fc3$pred)
+
+length(pred_dma)
+
+length(pred_rf)
+
+length(pred_nnar)
+```
+
+## Plot Perbandingan Forecast VS Actual Semua Model
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# Samakan panjang data
+plot_df <- data.frame(
+  Time   = 2:126,
+  Actual = as.numeric(test)[2:126],
+  ARIMA  = as.numeric(fc_m1$mean)[2:126],
+  SARIMA = as.numeric(fc4$pred)[2:126],
+  DMA    = as.numeric(pred_dma)[2:126],
+  RF     = as.numeric(pred_rf),
+  NNAR   = as.numeric(pred_nnar)[2:126]
+)
+
+# Ubah ke format long
+plot_long <- pivot_longer(
+  plot_df,
+  cols = -Time,
+  names_to = "Series",
+  values_to = "Value"
+)
+
+# Plot
+ggplot(
+  plot_long,
+  aes(
+    x = Time,
+    y = Value,
+    color = Series,
+    linetype = Series
+  )
+) +
+  geom_line(linewidth = 0.8) +
+  labs(
+    title = "Actual vs Forecasted CNY/IDR Exchange Rate",
+    x = "Observation",
+    y = "Exchange Rate"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "bottom"
+  )
+```
+
+```{r}
+compare_df <- data.frame(
+  Time   = 1:125,
+  Actual = as.numeric(test)[1:125],
+  ARIMA  = as.numeric(fc_m1$mean)[1:125],
+  SARIMA = as.numeric(fc4$pred)[1:125],
+  DMA    = as.numeric(pred_dma)[1:125],
+  RF     = as.numeric(pred_rf),
+  NNAR   = as.numeric(pred_nnar)[1:125]
+)
+
+compare_long <- compare_df |>
+  pivot_longer(
+    cols = c(ARIMA,SARIMA,DMA,RF,NNAR),
+    names_to = "Model",
+    values_to = "Forecast"
+  )
+
+ggplot(compare_long) +
+  geom_line(
+    aes(Time, Actual),
+    linewidth = 1
+  ) +
+  geom_line(
+    aes(Time, Forecast),
+    linewidth = 1,
+    linetype = "dashed"
+  ) +
+  facet_wrap(~Model, ncol = 2) +
+  theme_minimal()
+```
+```{r}
+plot_arima <- data.frame(
+  Time = 1:125,
+  Actual = as.numeric(test)[1:125],
+  Forecast = as.numeric(fc_m1$mean)[1:125]
+)
+
+ggplot(plot_arima, aes(Time)) +
+  geom_line(aes(y = Actual, color = "Actual"), linewidth = 1) +
+  geom_line(aes(y = Forecast, color = "Forecast"),
+            linewidth = 1,
+            linetype = "dashed") +
+  labs(
+    title = "ARIMA(0,1,0): Actual vs Forecast",
+    x = "Observation",
+    y = "CNY/IDR Exchange Rate"
+  ) +
+  theme_minimal()
+```
+```{r}
+plot_sarima <- data.frame(
+  Time = 1:125,
+  Actual = as.numeric(test)[1:125],
+  Forecast = as.numeric(fc4$pred)[1:125]
+)
+
+ggplot(plot_sarima, aes(Time)) +
+  geom_line(aes(y = Actual, color = "Actual"), linewidth = 1) +
+  geom_line(aes(y = Forecast, color = "Forecast"),
+            linewidth = 1,
+            linetype = "dashed") +
+  labs(
+    title = "SARIMA(0,1,0)(0,0,1)[20]: Actual vs Forecast",
+    x = "Observation",
+    y = "CNY/IDR Exchange Rate"
+  ) +
+  theme_minimal()
+```
+```{r}
+plot_dma <- data.frame(
+  Time = 1:125,
+  Actual = as.numeric(test)[1:125],
+  Forecast = as.numeric(pred_dma)[1:125]
+)
+
+ggplot(plot_dma, aes(Time)) +
+  geom_line(aes(y = Actual, color = "Actual"), linewidth = 1) +
+  geom_line(aes(y = Forecast, color = "Forecast"),
+            linewidth = 1,
+            linetype = "dashed") +
+  labs(
+    title = "DMA(24): Actual vs Forecast",
+    x = "Observation",
+    y = "CNY/IDR Exchange Rate"
+  ) +
+  theme_minimal()
+```
+```{r}
+plot_rf <- data.frame(
+  Time = 1:125,
+  Actual = as.numeric(test)[1:125],
+  Forecast = as.numeric(pred_rf)
+)
+
+ggplot(plot_rf, aes(Time)) +
+  geom_line(aes(y = Actual, color = "Actual"), linewidth = 1) +
+  geom_line(aes(y = Forecast, color = "Forecast"),
+            linewidth = 1,
+            linetype = "dashed") +
+  labs(
+    title = "Random Forest (ntree=36, mtry=1): Actual vs Forecast",
+    x = "Observation",
+    y = "CNY/IDR Exchange Rate"
+  ) +
+  theme_minimal()
+```
+```{r}
+plot_nnar <- data.frame(
+  Time = 1:125,
+  Actual = as.numeric(test)[1:125],
+  Forecast = as.numeric(pred_nnar)[1:125]
+)
+
+ggplot(plot_nnar, aes(Time)) +
+  geom_line(aes(y = Actual, color = "Actual"), linewidth = 1) +
+  geom_line(aes(y = Forecast, color = "Forecast"),
+            linewidth = 1,
+            linetype = "dashed") +
+  labs(
+    title = "NNAR(5,9): Actual vs Forecast",
+    x = "Observation",
+    y = "CNY/IDR Exchange Rate"
+  ) +
+  theme_minimal()
+```
+
+
